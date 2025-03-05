@@ -1,14 +1,15 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 import io
-import cv2
 import numpy as np
+import tensorflow as tf
+import cv2
 from keras.preprocessing import image as i1
-from keras import models
 
 app = FastAPI()
 
-# Charger le modèle au démarrage de l'application
-model = models.load_model("model.h5")
+# Charger le modèle TensorFlow Lite au démarrage de l'application
+interpreter = tf.lite.Interpreter(model_path="model.tflite")
+interpreter.allocate_tensors()
 
 # Fonction de classification
 def predict_label(img_bytes):
@@ -17,11 +18,25 @@ def predict_label(img_bytes):
     if img is None:
         raise HTTPException(status_code=400, detail="Invalid image format")
 
-    resized = cv2.resize(img, (50, 50))  # Redimensionnement à 50x50
+    # Redimensionnement à 50x50
+    resized = cv2.resize(img, (50, 50))  
     img_array = i1.img_to_array(resized) / 255.0  # Normalisation
     img_array = img_array.reshape(1, 50, 50, 3)  # Ajustement de la forme pour le modèle
 
-    result = model.predict(img_array)
+    # Préparer les tensors pour TensorFlow Lite
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    # Remplir les entrées du modèle TensorFlow Lite
+    interpreter.set_tensor(input_details[0]['index'], img_array.astype(np.float32))
+
+    # Exécuter l'inférence
+    interpreter.invoke()
+
+    # Obtenir les résultats
+    result = interpreter.get_tensor(output_details[0]['index'])
+
+    # Convertir les résultats en probabilités
     a = round(result[0, 0], 2) * 100
     b = round(result[0, 1], 2) * 100
     probability = [a, b]
