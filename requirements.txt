@@ -1,5 +1,5 @@
 fastapi
-opencv-python-headless
+opencv-python
 numpy
 keras
 tensorflow
