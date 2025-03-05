@@ -38,8 +38,8 @@ def predict_label(img_bytes):
     result = interpreter.get_tensor(output_details[0]['index'])
 
     # Convertir les résultats en probabilités
-    a = round(result[0, 0], 2) * 100
-    b = round(result[0, 1], 2) * 100
+    a = round(float(result[0, 0]), 2) * 100  # Convertir numpy.float32 en float
+    b = round(float(result[0, 1]), 2) * 100  # Convertir numpy.float32 en float
     probability = [a, b]
     threshold = 10
 
