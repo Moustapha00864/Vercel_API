@@ -1,4 +1,3 @@
-tensorflow-gpu
 fastapi
 opencv-python
 numpy
