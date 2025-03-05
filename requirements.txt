@@ -1,10 +1,5 @@
 fastapi
-uvicorn
-tensorflow 
-Keras
-pillow
-opencv-python
+opencv-python-headless
 numpy
-werkzeug
-fastapi
-shutil
+keras
+uvicorn
