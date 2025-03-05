@@ -7,6 +7,8 @@ from keras.preprocessing import image as i1
 
 app = FastAPI()
 
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 # Charger le modèle TensorFlow Lite au démarrage de l'application
 interpreter = tf.lite.Interpreter(model_path="model.tflite")
 interpreter.allocate_tensors()
