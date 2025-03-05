@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+tensorflow 
+Keras
+pillow
+opencv-python
+numpy
+werkzeug
+fastapi
+shutil
