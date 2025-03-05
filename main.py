@@ -1,62 +1,54 @@
-import numpy as np
+from fastapi import FastAPI, File, UploadFile, HTTPException
 import cv2
-import io 
+import io
 import os
-import tensorflow as tf
-from tensorflow.keras.models import load_model
-from flask import Flask, render_template, request
+import numpy as np
+from keras.preprocessing import image as i1
+from keras import models
 
-# Charger le modèle avec gestion des erreurs
-try:
-    model = load_model("model.h5", compile=False)
-    print("Modèle chargé avec succès !")
-except Exception as e:
-    print(f"Erreur lors du chargement du modèle : {e}")
-    exit()
+app = FastAPI()
 
-# Classes des prédictions
-CLASS_NAMES = ['Bénin', 'Malin']
+# Charger le modèle
+model = models.load_model("model.h5")
 
-def predict_label(img_path):
+# Fonction de classification
+def predict_label(img_array):
+    resized = cv2.resize(img_array, (50, 50))
+    i = i1.img_to_array(resized) / 255.0
+    i = i.reshape(1, 50, 50, 3)
+    result = model.predict(i)
+    a = round(result[0, 0], 2) * 100
+    b = round(result[0, 1], 2) * 100
+    probability = [a, b]
+    threshold = 10
+
+    if a > threshold or b > threshold:
+        ind = np.argmax(result)
+        classes = ["Cellule Normal: Pas de Paludisme", "Cellule Infecté :Présence du Paludisme"]
+        return classes[ind], probability[ind]
+    else:
+        return "Invalid Image", 0
+
+# Endpoint pour la classification d'une image sans stockage
+@app.post("/predict/")
+async def classify_image(file: UploadFile = File(...)):
     try:
-        # Charger et traiter l'image
-        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        # Lecture du fichier en tant qu'image
+        contents = await file.read()
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
         if img is None:
-            raise ValueError("Erreur lors du chargement de l'image. Assurez-vous que le chemin est correct.")
-        
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convertir en RGB
-        img = cv2.resize(img, (50, 50))  # Redimensionner selon les attentes du modèle
-        img_array = np.array(img, dtype=np.float32) / 255.0  # Normaliser
-        img_array = np.expand_dims(img_array, axis=0)  # Ajouter une dimension batch
-        
-        # Faire la prédiction
-        predictions = model.predict(img_array)
-        predicted_class = np.argmax(predictions, axis=1)[0]
-        return CLASS_NAMES[predicted_class]
+            raise HTTPException(status_code=400, detail="Invalid image format")
+
+        # Classification
+        label, probability = predict_label(img)
+        return {"filename": file.filename, "label": label, "probability": probability}
+
     except Exception as e:
-        print(f"Erreur de prédiction : {e}")
-        return "Erreur de prédiction"
+        raise HTTPException(status_code=500, detail=str(e))
 
-# Initialisation de Flask
-app = Flask(__name__)
-
-@app.route("/", methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            return render_template("index.html", prediction="Aucun fichier sélectionné")
-        
-        file = request.files['file']
-        if file.filename == '':
-            return render_template("index.html", prediction="Aucun fichier sélectionné")
-        
-        file_path = "static/uploads/" + file.filename
-        file.save(file_path)
-        
-        prediction = predict_label(file_path)
-        return render_template("index.html", prediction=prediction, img_path=file_path)
-    
-    return render_template("index.html", prediction=None)
-
-if __name__ == "__main__":
-    app.run(debug=True)
+# Route d'accueil
+@app.get("/")
+def home():
+    return {"message": "Bienvenue sur l'API de classification du paludisme"}
