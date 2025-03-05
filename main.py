@@ -1,22 +1,43 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
-import cv2
 import io
-import os
 import numpy as np
+import tensorflow as tf
+import os
+import cv2
 from keras.preprocessing import image as i1
-from keras import models
 
 app = FastAPI()
 
-# Charger le modèle
-model = models.load_model("model.h5")
+# Charger le modèle TensorFlow Lite au démarrage de l'application
+interpreter = tf.lite.Interpreter(model_path="model.tflite")
+interpreter.allocate_tensors()
 
 # Fonction de classification
-def predict_label(img_array):
-    resized = cv2.resize(img_array, (50, 50))
-    i = i1.img_to_array(resized) / 255.0
-    i = i.reshape(1, 50, 50, 3)
-    result = model.predict(i)
+def predict_label(img_bytes):
+    # Conversion de l'image en tableau NumPy
+    img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        raise HTTPException(status_code=400, detail="Invalid image format")
+
+    # Redimensionnement à 50x50
+    resized = cv2.resize(img, (50, 50))  
+    img_array = i1.img_to_array(resized) / 255.0  # Normalisation
+    img_array = img_array.reshape(1, 50, 50, 3)  # Ajustement de la forme pour le modèle
+
+    # Préparer les tensors pour TensorFlow Lite
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    # Remplir les entrées du modèle TensorFlow Lite
+    interpreter.set_tensor(input_details[0]['index'], img_array.astype(np.float32))
+
+    # Exécuter l'inférence
+    interpreter.invoke()
+
+    # Obtenir les résultats
+    result = interpreter.get_tensor(output_details[0]['index'])
+
+    # Convertir les résultats en probabilités
     a = round(result[0, 0], 2) * 100
     b = round(result[0, 1], 2) * 100
     probability = [a, b]
@@ -24,25 +45,20 @@ def predict_label(img_array):
 
     if a > threshold or b > threshold:
         ind = np.argmax(result)
-        classes = ["Cellule Normal: Pas de Paludisme", "Cellule Infecté :Présence du Paludisme"]
+        classes = ["Cellule Normal: Pas de Paludisme", "Cellule Infectée: Présence du Paludisme"]
         return classes[ind], probability[ind]
     else:
-        return "Invalid Image", 0
+        return "Image invalide", 0
 
-# Endpoint pour la classification d'une image sans stockage
+# Endpoint pour l'upload et la classification
 @app.post("/predict/")
 async def classify_image(file: UploadFile = File(...)):
     try:
-        # Lecture du fichier en tant qu'image
-        contents = await file.read()
-        nparr = np.frombuffer(contents, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-        if img is None:
-            raise HTTPException(status_code=400, detail="Invalid image format")
+        # Lecture du fichier en mémoire
+        img_bytes = await file.read()
 
         # Classification
-        label, probability = predict_label(img)
+        label, probability = predict_label(img_bytes)
         return {"filename": file.filename, "label": label, "probability": probability}
 
     except Exception as e:
